@@ -30,7 +30,7 @@ object Producer {
     val images = spark.readStream
       .format("binaryFile")
       .schema(binaryFileSchema)
-      .option("pathGlobFilter", "*.jpg")
+      .option("pathGlobFilter", "*.{jpg,JPG,png,PNG,Jpg,Png,txt,TXT}")
       .option("maxFilesPerTrigger", nbPhotos)
       .load(inputPath)
 
