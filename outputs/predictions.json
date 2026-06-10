@@ -1,0 +1,18 @@
+[
+  {
+    "timestamp": "2026-06-10 11:28:12",
+    "image": "0034309.jpg",
+    "manufacturer": {
+      "label": "Boeing",
+      "confidence": 99.0
+    },
+    "family": {
+      "label": "A340",
+      "confidence": 88.9
+    },
+    "variant": {
+      "label": "A330-200",
+      "confidence": 33.62
+    }
+  }
+]
