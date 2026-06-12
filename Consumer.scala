@@ -3,51 +3,47 @@ import org.apache.spark.sql.streaming.Trigger
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.functions._
 
-// Consumer.scala THIS IS A FIRST VERSION MAY NEED ADJUSTEMENTS BLAAAAAAAAABLA
+// test first consumer
 object Consumer {
   def main(args: Array[String]): Unit = {
     
-    // 1. Initializeation
+    // Initializeation session
     val spark = SparkSession.builder()
       .appName("AircraftImageConsumer")
-      .master("local[*]") // Run locally using all available cores [cite: 189]
+      .master("local[*]")
       .getOrCreate()
     
     spark.sparkContext.setLogLevel("WARN")
-    import spark.implicits._ // Enablers handy implicits (As shown on Page 63) [cite: 755]
+    import spark.implicits._
+    //val sharedSourcePath = "data/output"
 
-    val sharedSourcePath = "data/output" 
-
-    // 2. Define the schema to read binary files
+    // defini le schema pour lire les binary files
     val binaryFileSchema = StructType(Seq(
       StructField("path", StringType, nullable = false),
       StructField("modificationTime", TimestampType, nullable = false),
       StructField("length", LongType, nullable = false),
       StructField("content", BinaryType, nullable = true)
     ))
-    // Structured Streaming treats this directory as an Unbounded Table
-    val streamingImagesDF = spark.readStream
+
+    val strImages = spark.readStream
       .format("binaryFile")
       .schema(binaryFileSchema)
-      .option("pathGlobFilter", "*.jpg") // Focus only on image files
+      .option("pathGlobFilter", "*.jpg") // files d type image jpg
       .load("data/output")
 
-    //.xtract Aircraft Type from the filename
-    // Let's assume your colleague saves images with names like "Boeing747_id123.jpg" or "AirbusA320_99.jpg"
-
-    val processedAircraftDF = streamingImagesDF
+    val processedAircraftDF = strImages
       .withColumn("fileName", element_at(split($"path", "/"), -1))
       .withColumn("aircraftType", split($"fileName", "_")(0))
 
-    // CONSOLIDATION: Running total of aircraft instances (Unbounded table principle) [
-    val globalAircraftCounts = processedAircraftDF.groupBy("aircraftType").count()
+    // nbr of  aircraft type
+    val aircraftCounts = processedAircraftDF.groupBy("aircraftType").count()
 
 
-    val query = globalAircraftCounts.writeStream
+    val query = aircraftCounts.writeStream
       .outputMode("complete") 
-      .format("console")      // Prints cleanly as a structured table in your terminal logs [cite: 782, 786]
-      .option("checkpointLocation", "data/checkpoint_consumer")
-      .trigger(Trigger.ProcessingTime("20 seconds"))              // Fires the trigger every 20 seconds
+      .format("console") // f tab
+      .option("checkpointLocation", "data/checkpointconsumr")
+      .trigger(Trigger.ProcessingTime("20 seconds"))
       .start() /
 
     query.awaitTermination() 
