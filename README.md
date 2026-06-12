@@ -1,33 +1,51 @@
 # Aircraft-Streaming-Analysis
 
-## Exécution
+## Execution
 
-### Étape 1 — Parsing Scala (annotations + extraction des pixels)
+### Step 1 - Scala dataset preparation
 
 ```bash
-# Pipeline complet (parse + embed)
+# Full preparation pipeline
 sbt run
 
-# Étapes individuelles
-sbt "run parse"   # annotations → data/parsing_output/parsed_dataset.parquet
-sbt "run embed"   # vecteurs de pixels → data/parsing_output/raw_embeddings.parquet
+# Individual stages
+sbt "run parse"   # -> data/parsing_output/parsed_dataset.parquet
+sbt "run embed"   # -> data/parsing_output/raw_embeddings.parquet
+
+# Optional scoring entrypoint
+sbt "run score"
 ```
 
-### Étape 2 — Entraînement Python (classifieurs depuis les parquets)
+### Step 2 - Python training
 
 ```bash
 python src/main/python/Training/training.py
 ```
 
-Lit `data/parsing_output/raw_embeddings.parquet`, entraîne trois classifieurs MLP PyTorch (fabricant / famille / variante) sur des features de pixels 64×64×3 = 12 288 dimensions, et sauvegarde les modèles dans `data/models/`.
+This reads `data/parsing_output/raw_embeddings.parquet`, trains three PyTorch MLP classifiers
+(`manufacturer`, `family`, `variant`), and writes them to `data/models/` as:
 
-### Étape 3 — Interface web
+- `*_model.pt`
+- `*_meta.pkl`
+
+### Step 3 - Prediction UI
 
 ```bash
-# Classifieur Flask (uploader une image → obtenir des prédictions)
 python src/main/python/web_interface/app.py
-# → http://localhost:5000
+# -> http://localhost:5000
+```
 
-# Tableau de bord Streamlit (stats du jeu de données + scores des modèles)
+Predictions are written to `outputs/predictions.json`.
+
+### Step 4 - Dashboard
+
+```bash
 streamlit run src/main/python/web_interface/streamlit_app.py
 ```
+
+## Important note
+
+The repository currently trains PyTorch models in Python.
+The Scala prediction/scoring code still expects Spark ML `PipelineModel` directories, so
+`sbt "run score"` is intentionally not supported for real inference with the current
+artifacts in `data/models/`.
