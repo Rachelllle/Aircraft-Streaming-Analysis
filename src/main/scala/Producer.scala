@@ -7,7 +7,9 @@ object Producer {
   def main(args: Array[String]): Unit = {
     val inputPath  = "data/input"
     val outputPath = "data/output"
-    val nbPhotos   = 20
+    val nbPhotos   = 20      // taille du batch
+    val interval   = 3       // délai entre chaque batch (sec)
+    val recursive  = true    // lecture sous dossiers ?
 
     val conf = new SparkConf()
       .setAppName("ImageProducer")
@@ -15,15 +17,23 @@ object Producer {
     val sc = new SparkContext(conf)
     sc.setLogLevel("WARN")
 
+    if (recursive) {
+      sc.hadoopConfiguration.setBoolean("mapreduce.input.fileinputformat.input.dir.recursive", true)
+    }
+
     val confSer = new SerializableConfiguration(sc.hadoopConfiguration)
 
     val sourcePaths = sc.binaryFiles(inputPath).keys.toLocalIterator
-
     val groups = sourcePaths.grouped(nbPhotos)
 
+    val tempsDebut = System.currentTimeMillis()
+    var totalImages = 0
     var batchId = 0
+
     while (groups.hasNext) {
       val batch = groups.next().toSeq
+
+      val tempsBatchDebut = System.currentTimeMillis()
 
       sc.parallelize(batch, numSlices = batch.length).foreachPartition { partition =>
         val fs = FileSystem.get(confSer.value)
@@ -42,11 +52,22 @@ object Producer {
         }
       }
 
-      println(s"Batch $batchId : ${batch.length} images écrites dans $outputPath")
+      val dureeBatch = (System.currentTimeMillis() - tempsBatchDebut) / 1000.0
+      totalImages += batch.length
+      println(f"Batch $batchId : ${batch.length} images en $dureeBatch%.2f s")
       batchId += 1
+
+      if (groups.hasNext) {
+        Thread.sleep(interval * 1000)
+      }
     }
 
-    println("Traitement terminé. Tous les fichiers ont été traités")
+    val dureeTotale = (System.currentTimeMillis() - tempsDebut) / 1000.0
+    val debit = if (dureeTotale > 0) totalImages / dureeTotale else 0.0
+    println("********* RÉSUMÉ *********")
+    println(f"$totalImages images traitées en $dureeTotale%.2f secondes")
+    println(f"Débit : $debit%.2f images/seconde")
+
     sc.stop()
   }
 }
