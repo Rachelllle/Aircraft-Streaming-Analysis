@@ -29,6 +29,7 @@ object Producer {
     val tempsDebut = System.currentTimeMillis()
     var totalImages = 0
     var batchId = 0
+    var tempsTraitementPur = 0.0
 
     while (groups.hasNext) {
       val batch = groups.next().toSeq
@@ -53,6 +54,7 @@ object Producer {
       }
 
       val dureeBatch = (System.currentTimeMillis() - tempsBatchDebut) / 1000.0
+      tempsTraitementPur += dureeBatch
       totalImages += batch.length
       println(f"Batch $batchId : ${batch.length} images en $dureeBatch%.2f s")
       batchId += 1
@@ -63,10 +65,13 @@ object Producer {
     }
 
     val dureeTotale = (System.currentTimeMillis() - tempsDebut) / 1000.0
-    val debit = if (dureeTotale > 0) totalImages / dureeTotale else 0.0
+    val debitTotal = if (dureeTotale > 0) totalImages / dureeTotale else 0.0
+    val debitPur   = if (tempsTraitementPur > 0) totalImages / tempsTraitementPur else 0.0
+
     println("********* RÉSUMÉ *********")
-    println(f"$totalImages images traitées en $dureeTotale%.2f secondes")
-    println(f"Débit : $debit%.2f images/seconde")
+    println(f"$totalImages images traitées")
+    println(f"Temps total (avec pauses)  : $dureeTotale%.2f s  -> débit cadencé : $debitTotal%.2f images/s")
+    println(f"Temps de traitement pur    : $tempsTraitementPur%.2f s  -> débit réel machine : $debitPur%.2f images/s")
 
     sc.stop()
   }
