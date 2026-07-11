@@ -7,9 +7,9 @@ object Producer {
   def main(args: Array[String]): Unit = {
     val inputPath  = "data/input"
     val outputPath = "data/output"
-    val nbPhotos   = 20      // taille du batch
-    val interval   = 3       // délai entre chaque batch (sec)
-    val recursive  = true    // lecture sous dossiers ?
+    val nbPhotos   = 20    
+    val interval   = 3      
+    val recursive  = true    
 
     val conf = new SparkConf()
       .setAppName("ImageProducer")
