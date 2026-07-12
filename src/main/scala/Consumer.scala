@@ -128,7 +128,7 @@ object Consumer {
         .start()
     } else {
       resultat
-        .select("image", "classe", "taille", "moyenne_octets", "largeur", "hauteur")
+        .select("image", "classe", "taille", "moyenne_pixels", "densite_contours", "largeur", "hauteur")
         .writeStream
         .format("console")
         .outputMode("append")
