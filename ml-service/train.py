@@ -1,10 +1,11 @@
 import glob
 import os
+
 import joblib
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.preprocessing import LabelEncoder
 
 
@@ -21,9 +22,11 @@ def lire_config(chemin="config/application.properties"):
 
 def main():
     config = lire_config()
+
     fichiers = glob.glob(os.path.join(config["output.path"], "*.csv"))
     df = pd.concat([pd.read_csv(f) for f in fichiers], ignore_index=True)
     df = df[df["classe"] != "inconnu"]
+
     print(f"{len(df)} images, {df['classe'].nunique()} classes")
     print(df["classe"].value_counts())
 
@@ -35,19 +38,35 @@ def main():
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    model = RandomForestClassifier(
-        n_estimators=300,
-        max_depth=20,
-        min_samples_split=5,
-        class_weight="balanced",
-        random_state=42,
-        n_jobs=-1,
-    )
-    model.fit(X_train, y_train)
+    # Grille de parametres a tester
+    param_grid = {
+        "n_estimators": [200, 300, 500],
+        "max_depth": [10, 20, 30, None],
+        "min_samples_split": [2, 5, 10],
+        "max_features": ["sqrt", 0.3],
+    }
 
+    grid = GridSearchCV(
+        estimator=RandomForestClassifier(
+            class_weight="balanced",
+            random_state=42,
+            n_jobs=-1,
+        ),
+        param_grid=param_grid,
+        cv=5,
+        scoring="f1_macro",
+        n_jobs=-1,
+        verbose=2,
+    )
+    grid.fit(X_train, y_train)
+
+    print(f"\nMeilleurs parametres : {grid.best_params_}")
+    print(f"Meilleur score CV (f1_macro) : {grid.best_score_:.4f}")
+
+    model = grid.best_estimator_
     y_pred = model.predict(X_test)
     accuracy = accuracy_score(y_test, y_pred)
-    print(f"Accuracy : {accuracy:.4f}")
+    print(f"\nAccuracy sur le test : {accuracy:.4f}")
     print(classification_report(y_test, y_pred, target_names=le.classes_))
 
     os.makedirs(os.path.dirname(config["model.path"]), exist_ok=True)
