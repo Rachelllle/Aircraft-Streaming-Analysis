@@ -51,6 +51,11 @@ build/
 
 ### Mac OS ###
 .DS_Store
-### Dataset brut (trop volumineux pour GitHub) ###
-dataset/
+
+### Python ###
+__pycache__/
+*.pyc
+*.pyo
+
+### Modele entraine (trop volumineux pour GitHub) ###
 models/

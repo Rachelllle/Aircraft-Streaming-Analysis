@@ -1,13 +1,15 @@
-import glob
 import os
 
 import joblib
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
+from features import extraire_features
+
+NIVEAUX = ["constructeur", "famille", "variante"]
 
 
 def lire_config(chemin="config/application.properties"):
@@ -21,29 +23,55 @@ def lire_config(chemin="config/application.properties"):
     return config
 
 
-def main():
-    config = lire_config()
+def lire_images(dossier):
+    lignes = []
+    for racine, _, fichiers in os.walk(dossier):
+        for nom in sorted(fichiers):
+            if not nom.lower().endswith((".jpg", ".jpeg", ".png")):
+                continue
+            with open(os.path.join(racine, nom), "rb") as f:
+                lignes.append(extraire_features(f.read(), nom))
+            if len(lignes) % 100 == 0:
+                print(f"  {len(lignes)} images analysees...")
+    return pd.DataFrame(lignes)
 
-    fichiers = glob.glob(os.path.join(config["output.path"], "*.csv"))
-    df = pd.concat([pd.read_csv(f) for f in fichiers], ignore_index=True)
-    df = df[df["classe"] != "inconnu"]
-    print(f"{len(df)} images, {df['classe'].nunique()} classes")
+
+def entrainer(X, classes, niveau):
+    garder = classes.map(classes.value_counts()) >= 2
+    X, classes = X[garder], classes[garder]
 
     le = LabelEncoder()
-    X = df.drop(columns=["image", "classe"])
-    y = le.fit_transform(df["classe"])
+    y = le.fit_transform(classes)
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
 
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model = HistGradientBoostingClassifier(random_state=42)
     model.fit(X_train, y_train)
 
     accuracy = accuracy_score(y_test, model.predict(X_test))
-    print(f"Accuracy : {accuracy:.4f}")
+    print(f"  {niveau:13s} : {classes.nunique():3d} classes  ->  accuracy {accuracy:.4f}")
+
+    return {"model": model, "le": le, "accuracy": accuracy}
+
+
+def main():
+    config = lire_config()
+
+    print(f"Lecture des images d'entrainement ({config['train.path']})")
+    df = lire_images(config["train.path"])
+
+    labels = pd.read_csv(config["labels.path"])
+    df = df.merge(labels, on="image", how="inner")
+    print(f"{len(df)} images pretes")
+
+    X = df.drop(columns=["image", "classe"] + NIVEAUX)
+    modeles = {niveau: entrainer(X, df[niveau], niveau) for niveau in NIVEAUX}
 
     os.makedirs(os.path.dirname(config["model.path"]), exist_ok=True)
-    joblib.dump({"model": model, "le": le}, config["model.path"])
-    print(f"Modele exporte : {config['model.path']}")
+    joblib.dump(modeles, config["model.path"])
+    print(f"Modeles exportes : {config['model.path']}")
 
 
 if __name__ == "__main__":

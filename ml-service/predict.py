@@ -3,20 +3,23 @@ import sys
 import joblib
 import pandas as pd
 
+NIVEAUX = ["constructeur", "famille", "variante"]
+
 
 def main():
-    model_path, csv_entree, csv_sortie = sys.argv[1], sys.argv[2], sys.argv[3]
+    model_path, parquet_entree, parquet_sortie = sys.argv[1], sys.argv[2], sys.argv[3]
 
-    data = joblib.load(model_path)
-    model, le = data["model"], data["le"]
+    modeles = joblib.load(model_path)
 
-    df = pd.read_csv(csv_entree)
+    df = pd.read_parquet(parquet_entree)
     X = df.drop(columns=["image", "classe"])
 
-    df["classe_predite"] = le.inverse_transform(model.predict(X))
-    df["confiance"] = model.predict_proba(X).max(axis=1).round(4)
+    for niveau in NIVEAUX:
+        model, le = modeles[niveau]["model"], modeles[niveau]["le"]
+        df[niveau + "_predit"] = le.inverse_transform(model.predict(X))
+        df["confiance_" + niveau] = model.predict_proba(X).max(axis=1).round(4)
 
-    df.to_csv(csv_sortie, index=False)
+    df.to_parquet(parquet_sortie, index=False)
 
 
 if __name__ == "__main__":
