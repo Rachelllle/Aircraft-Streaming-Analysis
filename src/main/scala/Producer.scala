@@ -1,62 +1,78 @@
-import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.streaming.Trigger
+import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.hadoop.fs.{FileSystem, Path}
+import org.apache.hadoop.io.IOUtils
 import org.apache.spark.util.SerializableConfiguration
-import org.apache.spark.sql.types._
-
 
 object Producer {
   def main(args: Array[String]): Unit = {
-    val inputPath      = "data/input"
-    val outputPath     = "data/output"
-    val nbPhotos       = 20      // nb  photos par batch
-    val temps          = 5       // cadence en sec
+    val inputPath  = "data/input"
+    val outputPath = "data/output"
+    val nbPhotos   = 20    
+    val interval   = 3      
+    val recursive  = true    
 
-    val spark = SparkSession.builder()
-      .appName("ImageProducer")
-      .master("local[*]")
-      .getOrCreate()
-    spark.sparkContext.setLogLevel("WARN")
+    val conf = new SparkConf()
+      .setAppName("ImageProducer")
+      .setMaster("local[*]")
+    val sc = new SparkContext(conf)
+    sc.setLogLevel("WARN")
 
-    val confSer = new SerializableConfiguration(spark.sparkContext.hadoopConfiguration)
+    if (recursive) {
+      sc.hadoopConfiguration.setBoolean("mapreduce.input.fileinputformat.input.dir.recursive", true)
+    }
 
-    val binaryFileSchema = StructType(Seq(
-      StructField("path", StringType, nullable = false),
-      StructField("modificationTime", TimestampType, nullable = false),
-      StructField("length", LongType, nullable = false),
-      StructField("content", BinaryType, nullable = true)
-    ))
+    val confSer = new SerializableConfiguration(sc.hadoopConfiguration)
 
-    val images = spark.readStream
-      .format("binaryFile")
-      .schema(binaryFileSchema)
-      .option("pathGlobFilter", "*.{jpg,JPG,png,PNG,Jpg,Png,txt,TXT}")
-      .option("maxFilesPerTrigger", nbPhotos)
-      .load(inputPath)
+    val sourcePaths = sc.binaryFiles(inputPath).keys.toLocalIterator
+    val groups = sourcePaths.grouped(nbPhotos)
 
-    val query = images.writeStream
-      .foreachBatch { (batchDF: org.apache.spark.sql.DataFrame, batchId: Long) =>
-        batchDF.select("path", "content").foreachPartition { rows: Iterator[org.apache.spark.sql.Row] =>
-          val fs = FileSystem.get(confSer.value)
-          rows.foreach { row =>
-            val srcPath  = row.getAs[String]("path")
-            val content  = row.getAs[Array[Byte]]("content")
-            val fileName = new Path(srcPath).getName
-            val outFile  = new Path(outputPath, fileName)
-            val out = fs.create(outFile, true)
-            try {
-              out.write(content)
-            } finally {
-              out.close()
-            }
+    val tempsDebut = System.currentTimeMillis()
+    var totalImages = 0
+    var batchId = 0
+    var tempsTraitementPur = 0.0
+
+    while (groups.hasNext) {
+      val batch = groups.next().toSeq
+
+      val tempsBatchDebut = System.currentTimeMillis()
+
+      sc.parallelize(batch, numSlices = batch.length).foreachPartition { partition =>
+        val fs = FileSystem.get(confSer.value)
+        partition.foreach { srcUri =>
+          val srcPath  = new Path(srcUri)
+          val fileName = srcPath.getName
+          val outFile  = new Path(outputPath, fileName)
+          val in  = fs.open(srcPath)
+          val out = fs.create(outFile, true)
+          try {
+            IOUtils.copyBytes(in, out, confSer.value, false)
+          } finally {
+            in.close()
+            out.close()
           }
         }
-        println(s"Batch $batchId : ${batchDF.count()} images écrites dans $outputPath")
       }
-      .option("checkpointLocation", "data/checkpoint")
-      .trigger(Trigger.ProcessingTime(s"$temps seconds"))
-      .start()
 
-    query.awaitTermination()
+      val dureeBatch = (System.currentTimeMillis() - tempsBatchDebut) / 1000.0
+      tempsTraitementPur += dureeBatch
+      totalImages += batch.length
+      println(f"Batch $batchId : ${batch.length} images en $dureeBatch%.2f s")
+      batchId += 1
+
+      if (groups.hasNext) {
+        Thread.sleep(interval * 1000)
+      }
+    }
+
+    val dureeTotale = (System.currentTimeMillis() - tempsDebut) / 1000.0
+    val debitTotal = if (dureeTotale > 0) totalImages / dureeTotale else 0.0
+    val debitPur   = if (tempsTraitementPur > 0) totalImages / tempsTraitementPur else 0.0
+
+    println("********* RÉSUMÉ *********")
+    println(f"$totalImages images traitées")
+    println(f"Temps total (avec pauses)  : $dureeTotale%.2f s  -> débit cadencé : $debitTotal%.2f images/s")
+    println(f"Temps de traitement pur    : $tempsTraitementPur%.2f s  -> débit réel machine : $debitPur%.2f images/s")
+
+    sc.stop()
   }
 }
