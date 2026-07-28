@@ -2,7 +2,7 @@ import os
 
 import joblib
 import pandas as pd
-from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
@@ -47,7 +47,7 @@ def entrainer(X, classes, niveau):
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    model = HistGradientBoostingClassifier(random_state=42)
+    model = RandomForestClassifier(random_state=42)
     model.fit(X_train, y_train)
 
     accuracy = accuracy_score(y_test, model.predict(X_test))
