@@ -8,8 +8,8 @@ object Producer {
     val inputPath  = "data/input"
     val outputPath = "data/output"
     val nbPhotos   = 20      // taille du batch
-    val interval   = 3       // délai entre chaque batch (sec)
-    val recursive  = true    // lecture sous dossiers ?
+    val interval   = 3       // délai entre chaque batch
+    val recursive  = true    // lecture des sous dossiers ?
 
     val conf = new SparkConf()
       .setAppName("ImageProducer")
@@ -22,6 +22,8 @@ object Producer {
     }
 
     val confSer = new SerializableConfiguration(sc.hadoopConfiguration)
+    val fs = FileSystem.get(sc.hadoopConfiguration)
+
 
     val sourcePaths = sc.binaryFiles(inputPath).keys.toLocalIterator
     val groups = sourcePaths.grouped(nbPhotos)
@@ -33,23 +35,20 @@ object Producer {
 
     while (groups.hasNext) {
       val batch = groups.next().toSeq
-
       val tempsBatchDebut = System.currentTimeMillis()
 
-      sc.parallelize(batch, numSlices = batch.length).foreachPartition { partition =>
-        val fs = FileSystem.get(confSer.value)
-        partition.foreach { srcUri =>
-          val srcPath  = new Path(srcUri)
-          val fileName = srcPath.getName
-          val outFile  = new Path(outputPath, fileName)
-          val in  = fs.open(srcPath)
-          val out = fs.create(outFile, true)
-          try {
-            IOUtils.copyBytes(in, out, confSer.value, false)
-          } finally {
-            in.close()
-            out.close()
-          }
+
+      batch.foreach { srcUri =>
+        val srcPath  = new Path(srcUri)
+        val fileName = srcPath.getName
+        val outFile  = new Path(outputPath, fileName)
+        val in  = fs.open(srcPath)
+        val out = fs.create(outFile, true)
+        try {
+          IOUtils.copyBytes(in, out, confSer.value, false)
+        } finally {
+          in.close()
+          out.close()
         }
       }
 
